@@ -2,6 +2,7 @@ package main
 
 import (
 	"go-tenders-v3/api"
+	"go-tenders-v3/config"
 	"go-tenders-v3/storage"
 	"log"
 	"net/http"
@@ -11,15 +12,18 @@ import (
 )
 
 func main() {
-	// Подключаемся к базе (укажите свои параметры подключения)
-	db, err := sqlx.Connect("postgres", "user=postgres dbname=mydb sslmode=disable")
+	// Загружаем конфигурацию
+	cfg := config.LoadConfig()
+
+	// Подключаемся к базе данных Postgres по строке подключения из конфигурации
+	db, err := sqlx.Connect("postgres", cfg.PostgresConn)
 	if err != nil {
-		log.Fatal("DB connection error:", err)
+		log.Fatal("Failed to connect to DB:", err)
 	}
 
-	// Инициализируем слой storage
+	// Инициализируем слой хранения
 	store := storage.NewStorage(db)
-	log.Printf("Server started")
+
 	bidHandler := api.NewBidHandler(store)
 	tenderHandler := api.NewTenderHandler(store)
 	serviceHandler := api.NewServiceHandler()
@@ -29,7 +33,9 @@ func main() {
 		Tender:  tenderHandler,
 		Service: serviceHandler,
 	}
+
 	router := api.NewRouter(handlers)
 
-	log.Fatal(http.ListenAndServe(":8080", router))
+	log.Printf("Server started at %s", cfg.ServerAddress)
+	log.Fatal(http.ListenAndServe(cfg.ServerAddress, router))
 }
