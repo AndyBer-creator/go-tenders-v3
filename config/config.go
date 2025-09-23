@@ -8,13 +8,14 @@ import (
 )
 
 type Config struct {
-	ServerAddress string
-	PostgresConn  string
-	PostgresUser  string
-	PostgresPass  string
-	PostgresHost  string
-	PostgresPort  string
-	PostgresDB    string
+	ServerAddress   string
+	PostgresConn    string
+	PostgresUser    string
+	PostgresPass    string
+	PostgresHost    string
+	PostgresPort    string
+	PostgresDB      string
+	DatabaseSSLMode string
 }
 
 func LoadConfig() *Config {
@@ -24,13 +25,14 @@ func LoadConfig() *Config {
 	}
 
 	cfg := &Config{
-		ServerAddress: getEnv("SERVER_ADDRESS", "0.0.0.0:8080"),
-		PostgresConn:  getEnv("POSTGRES_CONN", ""),
-		PostgresUser:  getEnv("POSTGRES_USERNAME", ""),
-		PostgresPass:  getEnv("POSTGRES_PASSWORD", ""),
-		PostgresHost:  getEnv("POSTGRES_HOST", "localhost"),
-		PostgresPort:  getEnv("POSTGRES_PORT", "5432"),
-		PostgresDB:    getEnv("POSTGRES_DATABASE", ""),
+		ServerAddress:   getEnv("SERVER_ADDRESS", "0.0.0.0:8080"),
+		PostgresConn:    getEnv("POSTGRES_CONN", ""),
+		PostgresUser:    getEnv("POSTGRES_USERNAME", ""),
+		PostgresPass:    getEnv("POSTGRES_PASSWORD", ""),
+		PostgresHost:    getEnv("POSTGRES_HOST", "localhost"),
+		PostgresPort:    getEnv("POSTGRES_PORT", "5432"),
+		PostgresDB:      getEnv("POSTGRES_DATABASE", ""),
+		DatabaseSSLMode: getEnv("DATABASE_SSLMODE", "disable"),
 	}
 
 	// Если нет полной строки подключения, собрать из параметров
@@ -39,7 +41,7 @@ func LoadConfig() *Config {
 			log.Fatal("DB connection params missing in environment")
 		}
 		cfg.PostgresConn = "postgres://" + cfg.PostgresUser + ":" + cfg.PostgresPass + "@" +
-			cfg.PostgresHost + ":" + cfg.PostgresPort + "/" + cfg.PostgresDB
+			cfg.PostgresHost + ":" + cfg.PostgresPort + "/" + cfg.PostgresDB + "?sslmode=" + cfg.DatabaseSSLMode
 	}
 
 	return cfg

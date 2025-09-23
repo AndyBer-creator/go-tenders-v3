@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -21,19 +22,37 @@ func NewTenderHandler(s *storage.Storage) *TenderHandler {
 }
 
 func ModelToStorageTender(m *model.Tender) (*storage.Tender, error) {
-	id, err := strconv.Atoi(m.Id)
-	if err != nil {
-		return nil, err
+	var id, orgId int
+	var err error
+
+	if m.Id != "" {
+		id, err = strconv.Atoi(m.Id)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		id = 0
 	}
-	orgId, err := strconv.Atoi(m.OrganizationId)
-	if err != nil {
-		return nil, err
+
+	if m.OrganizationId != "" {
+		orgId, err = strconv.Atoi(m.OrganizationId)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		orgId = 0
 	}
-	createdAt, err := time.Parse(time.RFC3339, m.CreatedAt)
-	if err != nil {
-		return nil, err
+
+	var createdAt time.Time
+	if m.CreatedAt != "" {
+		createdAt, err = time.Parse(time.RFC3339, m.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		createdAt = time.Time{}
 	}
-	// Обратите внимание, что UpdatedAt нет в модели, убираем
+
 	status := ""
 	if m.Status != nil {
 		status = string(*m.Status)
@@ -42,11 +61,10 @@ func ModelToStorageTender(m *model.Tender) (*storage.Tender, error) {
 	return &storage.Tender{
 		Id:             id,
 		OrganizationId: orgId,
-		Title:          m.Name, // использован Name
+		Title:          m.Name,
 		Description:    m.Description,
 		Status:         status,
 		CreatedAt:      createdAt,
-		//	UpdatedAt:      time.Time{}, // или как-то иначе обрабатывать отсутствие
 	}, nil
 }
 
@@ -71,6 +89,7 @@ func NewTenderStatus(s string) *model.TenderStatus {
 func (h *TenderHandler) CreateTender(w http.ResponseWriter, r *http.Request) {
 	var t model.Tender
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		log.Printf("CreateTender: invalid JSON: %v", err)
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -78,11 +97,13 @@ func (h *TenderHandler) CreateTender(w http.ResponseWriter, r *http.Request) {
 
 	storageTender, err := ModelToStorageTender(&t)
 	if err != nil {
+		log.Printf("CreateTender: invalid tender data: %v", err)
 		http.Error(w, "Invalid tender data", http.StatusBadRequest)
 		return
 	}
 
 	if err := h.storage.CreateTender(storageTender); err != nil {
+		log.Printf("CreateTender: failed to create tender: %v", err)
 		http.Error(w, "Failed to create tender", http.StatusInternalServerError)
 		return
 	}
