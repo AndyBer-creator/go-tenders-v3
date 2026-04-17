@@ -29,6 +29,8 @@ type CreateBidParams struct {
 	TenderID        string
 	OrganizationID  int
 	CreatorUsername string
+	// AuthorID: organization id as string when OrganizationID > 0; employee id as string for user-authored bids.
+	AuthorID string
 }
 
 type ListBidParams struct {
@@ -58,10 +60,13 @@ func NewBidStore(db *sql.DB) *BidStore {
 
 func (s *BidStore) CreateBid(ctx context.Context, p CreateBidParams) (Bid, error) {
 	authorType := "User"
-	authorID := ""
+	authorID := p.AuthorID
 	if p.OrganizationID > 0 {
 		authorType = "Organization"
 		authorID = fmt.Sprintf("%d", p.OrganizationID)
+	}
+	if authorID == "" {
+		return Bid{}, errors.New("author id is required")
 	}
 
 	query := `

@@ -134,7 +134,7 @@ func (h *handler) handleCreateTender(w http.ResponseWriter, r *http.Request) {
 		Name:            req.Name,
 		Description:     req.Description,
 		ServiceType:     req.ServiceType,
-		Status:          req.Status,
+		Status:          "Created",
 		OrganizationID:  req.OrganizationID,
 		CreatorUsername: req.CreatorUsername,
 	})
@@ -453,7 +453,8 @@ func validateCreateTenderRequest(req createTenderRequest) error {
 	if _, ok := allowedServiceTypes[req.ServiceType]; !ok {
 		return errors.New("invalid serviceType")
 	}
-	if _, ok := allowedTenderStatuses[req.Status]; !ok {
+	req.Status = strings.TrimSpace(req.Status)
+	if req.Status != "" && req.Status != "Created" {
 		return errors.New("invalid status")
 	}
 	if req.OrganizationID <= 0 {

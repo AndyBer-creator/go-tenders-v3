@@ -116,13 +116,28 @@ func (h *handler) handleCreateBid(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var authorID string
+	if req.OrganizationID <= 0 {
+		eid, err := h.tenders.EmployeeIDByUsername(ctx, req.CreatorUsername)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				writeError(w, http.StatusUnauthorized, "user does not exist")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to resolve author")
+			}
+			return
+		}
+		authorID = strconv.Itoa(eid)
+	}
+
 	b, err := h.bids.CreateBid(ctx, store.CreateBidParams{
 		Name:            req.Name,
 		Description:     req.Description,
-		Status:          req.Status,
+		Status:          "Created",
 		TenderID:        req.TenderID,
 		OrganizationID:  req.OrganizationID,
 		CreatorUsername: req.CreatorUsername,
+		AuthorID:        authorID,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create bid")
@@ -314,6 +329,16 @@ func (h *handler) handleBidStatus(w http.ResponseWriter, r *http.Request, bidID 
 		return
 	}
 
+	mutable, err := h.isBidMutableByUser(ctx, b, username)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to verify access")
+		return
+	}
+	if !mutable {
+		writeError(w, http.StatusForbidden, "insufficient permissions")
+		return
+	}
+
 	status := strings.TrimSpace(r.URL.Query().Get("status"))
 	if _, ok := allowedBidStatuses[status]; !ok {
 		writeError(w, http.StatusBadRequest, "invalid status")
@@ -371,12 +396,12 @@ func (h *handler) handleEditBid(w http.ResponseWriter, r *http.Request, bidID st
 		writeError(w, http.StatusBadRequest, "invalid bidId")
 		return
 	}
-	allowed, err := h.isBidVisibleForUser(ctx, b, username)
+	mutable, err := h.isBidMutableByUser(ctx, b, username)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to verify access")
 		return
 	}
-	if !allowed {
+	if !mutable {
 		writeError(w, http.StatusForbidden, "insufficient permissions")
 		return
 	}
@@ -429,12 +454,12 @@ func (h *handler) handleRollbackBid(w http.ResponseWriter, r *http.Request, bidI
 		writeError(w, http.StatusBadRequest, "invalid bidId")
 		return
 	}
-	allowed, err := h.isBidVisibleForUser(ctx, b, username)
+	mutable, err := h.isBidMutableByUser(ctx, b, username)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to verify access")
 		return
 	}
-	if !allowed {
+	if !mutable {
 		writeError(w, http.StatusForbidden, "insufficient permissions")
 		return
 	}
@@ -696,7 +721,8 @@ func validateCreateBidRequest(req createBidRequest) error {
 	if req.Description == "" || len(req.Description) > 500 {
 		return errors.New("invalid description")
 	}
-	if _, ok := allowedBidStatuses[req.Status]; !ok {
+	req.Status = strings.TrimSpace(req.Status)
+	if req.Status != "" && req.Status != "Created" {
 		return errors.New("invalid status")
 	}
 	if req.TenderID == "" {
@@ -765,6 +791,24 @@ func (h *handler) isBidVisibleForUser(ctx context.Context, b store.Bid, username
 		return true, nil
 	}
 
+	return false, nil
+}
+
+// isBidMutableByUser allows edit/rollback/status changes only for the bid author (creator) or org responsibles of the bid's authoring organization — not tender-side reviewers.
+func (h *handler) isBidMutableByUser(ctx context.Context, b store.Bid, username string) (bool, error) {
+	if username == "" {
+		return false, nil
+	}
+	if b.CreatorUsername == username {
+		return true, nil
+	}
+	if b.AuthorType == "Organization" {
+		orgID, err := strconv.Atoi(b.AuthorID)
+		if err != nil {
+			return false, nil
+		}
+		return h.tenders.IsOrganizationResponsible(ctx, orgID, username)
+	}
 	return false, nil
 }
 

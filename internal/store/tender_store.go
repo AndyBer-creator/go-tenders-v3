@@ -62,6 +62,20 @@ func (s *TenderStore) UserExists(ctx context.Context, username string) (bool, er
 	return exists, err
 }
 
+// EmployeeIDByUsername returns employee.id for a valid username (used as bid author_id for User bids).
+func (s *TenderStore) EmployeeIDByUsername(ctx context.Context, username string) (int, error) {
+	var id int
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT id FROM employee WHERE username = $1`,
+		username,
+	).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return id, err
+}
+
 func (s *TenderStore) IsOrganizationResponsible(ctx context.Context, organizationID int, username string) (bool, error) {
 	var exists bool
 	err := s.db.QueryRowContext(
