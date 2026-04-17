@@ -18,7 +18,7 @@ func NewRouter(db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/bids/my", h.handleUserBids)
 	mux.HandleFunc("/api/bids/", h.handleBidPath)
 
-	return mux
+	return requestLogger(mux)
 }
 
 func pingHandler(w http.ResponseWriter, r *http.Request) {

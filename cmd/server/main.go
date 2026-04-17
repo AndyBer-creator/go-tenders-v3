@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"database/sql"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -16,11 +17,14 @@ import (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	cfg := config.FromEnv()
 
 	db, err := sql.Open("postgres", cfg.PostgresConn)
 	if err != nil {
-		log.Fatalf("open postgres: %v", err)
+		slog.Error("open postgres failed", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -28,7 +32,8 @@ func main() {
 	defer cancel()
 
 	if err = db.PingContext(ctx); err != nil {
-		log.Fatalf("ping postgres: %v", err)
+		slog.Error("ping postgres failed", "error", err)
+		os.Exit(1)
 	}
 
 	server := &http.Server{
@@ -38,9 +43,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("listening on %s", cfg.ServerAddress)
+		slog.Info("server listening", "address", cfg.ServerAddress)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("http server failed: %v", err)
+			slog.Error("http server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -52,6 +58,6 @@ func main() {
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		slog.Error("graceful shutdown failed", "error", err)
 	}
 }
