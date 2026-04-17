@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 
 	"go-tenders-v3-main/internal/config"
@@ -18,6 +19,9 @@ import (
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	if err := godotenv.Load(); err != nil {
+		slog.Info(".env not loaded, using environment/defaults", "error", err)
+	}
 
 	cfg := config.FromEnv()
 

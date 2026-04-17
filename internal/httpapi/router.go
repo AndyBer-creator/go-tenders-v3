@@ -9,6 +9,7 @@ func NewRouter(db *sql.DB) http.Handler {
 	mux := http.NewServeMux()
 	h := newHandler(db)
 
+	mux.HandleFunc("/", portfolioUIHandler)
 	mux.HandleFunc("/api/ping", pingHandler)
 	mux.HandleFunc("/api/tenders", h.handleTenders)
 	mux.HandleFunc("/api/tenders/new", h.handleCreateTender)
