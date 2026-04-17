@@ -1,100 +1,171 @@
--- Удаляем таблицы, если они есть, чтобы избежать ошибок при повторном выполнении
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- cleanup
+DROP TABLE IF EXISTS bid_decision CASCADE;
 DROP TABLE IF EXISTS bid_feedback CASCADE;
-DROP TABLE IF EXISTS bid_history CASCADE;
+DROP TABLE IF EXISTS bid_version CASCADE;
 DROP TABLE IF EXISTS bid CASCADE;
-DROP TABLE IF EXISTS tender_history CASCADE;
+DROP TABLE IF EXISTS tender_version CASCADE;
 DROP TABLE IF EXISTS tender CASCADE;
 DROP TABLE IF EXISTS organization_responsible CASCADE;
 DROP TABLE IF EXISTS organization CASCADE;
 DROP TABLE IF EXISTS employee CASCADE;
+
+DROP TYPE IF EXISTS bid_decision_type;
+DROP TYPE IF EXISTS bid_status;
+DROP TYPE IF EXISTS bid_author_type;
+DROP TYPE IF EXISTS tender_status;
+DROP TYPE IF EXISTS tender_service_type;
 DROP TYPE IF EXISTS organization_type;
 
--- Таблица сотрудников (users)
+-- existing entities from specification
 CREATE TABLE employee (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     first_name VARCHAR(50),
     last_name VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- Тип организации
 CREATE TYPE organization_type AS ENUM (
     'IE',
     'LLC',
     'JSC'
 );
 
--- Таблица организаций
 CREATE TABLE organization (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
     type organization_type,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- Ответственные за организацию
 CREATE TABLE organization_responsible (
     id SERIAL PRIMARY KEY,
-    organization_id INT REFERENCES organization(id) ON DELETE CASCADE,
-    user_id INT REFERENCES employee(id) ON DELETE CASCADE
-);
-
--- Таблица тендеров
-CREATE TABLE tender (
-    id SERIAL PRIMARY KEY,
     organization_id INT NOT NULL REFERENCES organization(id) ON DELETE CASCADE,
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    status VARCHAR(50) NOT NULL DEFAULT 'CREATED',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    user_id INT NOT NULL REFERENCES employee(id) ON DELETE CASCADE,
+    UNIQUE (organization_id, user_id)
 );
 
--- Таблица предложений на тендер
+-- domain enums
+CREATE TYPE tender_service_type AS ENUM (
+    'Construction',
+    'Delivery',
+    'Manufacture'
+);
+
+CREATE TYPE tender_status AS ENUM (
+    'Created',
+    'Published',
+    'Closed'
+);
+
+CREATE TYPE bid_author_type AS ENUM (
+    'Organization',
+    'User'
+);
+
+CREATE TYPE bid_status AS ENUM (
+    'Created',
+    'Published',
+    'Canceled',
+    'Approved',
+    'Rejected'
+);
+
+CREATE TYPE bid_decision_type AS ENUM (
+    'Approved',
+    'Rejected'
+);
+
+-- tenders
+CREATE TABLE tender (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    service_type tender_service_type NOT NULL,
+    status tender_status NOT NULL DEFAULT 'Created',
+    organization_id INT NOT NULL REFERENCES organization(id) ON DELETE RESTRICT,
+    creator_username VARCHAR(50) NOT NULL REFERENCES employee(username) ON DELETE RESTRICT,
+    version INT NOT NULL DEFAULT 1 CHECK (version >= 1),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE tender_version (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tender_id UUID NOT NULL REFERENCES tender(id) ON DELETE CASCADE,
+    version INT NOT NULL CHECK (version >= 1),
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    service_type tender_service_type NOT NULL,
+    status tender_status NOT NULL,
+    organization_id INT NOT NULL,
+    creator_username VARCHAR(50) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (tender_id, version)
+);
+
+-- bids
 CREATE TABLE bid (
-    id SERIAL PRIMARY KEY,
-    tender_id INT NOT NULL REFERENCES tender(id) ON DELETE CASCADE,
-    user_id INT NOT NULL REFERENCES employee(id),
-    amount NUMERIC(12, 2),
-    description TEXT,
-    status VARCHAR(50) DEFAULT 'PENDING',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    status bid_status NOT NULL DEFAULT 'Created',
+    tender_id UUID NOT NULL REFERENCES tender(id) ON DELETE CASCADE,
+    author_type bid_author_type NOT NULL,
+    -- For Organization author: organization.id as text, for User author: employee.id as text.
+    author_id VARCHAR(100) NOT NULL,
+    creator_username VARCHAR(50) NOT NULL REFERENCES employee(username) ON DELETE RESTRICT,
+    version INT NOT NULL DEFAULT 1 CHECK (version >= 1),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Отзывы к предложениям
+CREATE TABLE bid_version (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bid_id UUID NOT NULL REFERENCES bid(id) ON DELETE CASCADE,
+    version INT NOT NULL CHECK (version >= 1),
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    status bid_status NOT NULL,
+    tender_id UUID NOT NULL,
+    author_type bid_author_type NOT NULL,
+    author_id VARCHAR(100) NOT NULL,
+    creator_username VARCHAR(50) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (bid_id, version)
+);
+
+CREATE TABLE bid_decision (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bid_id UUID NOT NULL REFERENCES bid(id) ON DELETE CASCADE,
+    username VARCHAR(50) NOT NULL REFERENCES employee(username) ON DELETE RESTRICT,
+    decision bid_decision_type NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (bid_id, username)
+);
+
 CREATE TABLE bid_feedback (
-    id SERIAL PRIMARY KEY,
-    bid_id INT NOT NULL REFERENCES bid(id) ON DELETE CASCADE,
-    feedback_text TEXT,
-    rating INT CHECK (rating BETWEEN 1 AND 5),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bid_id UUID NOT NULL REFERENCES bid(id) ON DELETE CASCADE,
+    description VARCHAR(1000) NOT NULL,
+    author_username VARCHAR(50) NOT NULL REFERENCES employee(username) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- История тендеров
-CREATE TABLE tender_history (
-    id SERIAL PRIMARY KEY,
-    tender_id INT NOT NULL REFERENCES tender(id) ON DELETE CASCADE,
-    version INT NOT NULL,
-    data JSONB NOT NULL,
-    archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- indexes
+CREATE INDEX idx_tender_org_id ON tender(organization_id);
+CREATE INDEX idx_tender_creator ON tender(creator_username);
+CREATE INDEX idx_tender_name ON tender(name);
 
--- История предложений
-CREATE TABLE bid_history (
-    id SERIAL PRIMARY KEY,
-    bid_id INT NOT NULL REFERENCES bid(id) ON DELETE CASCADE,
-    version INT NOT NULL,
-    data JSONB NOT NULL,
-    archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Индексы для производительности
-CREATE INDEX idx_bid_user_id ON bid(user_id);
 CREATE INDEX idx_bid_tender_id ON bid(tender_id);
-CREATE INDEX idx_tender_organization_id ON tender(organization_id);
+CREATE INDEX idx_bid_creator ON bid(creator_username);
+CREATE INDEX idx_bid_status ON bid(status);
+CREATE INDEX idx_bid_name ON bid(name);
+
+CREATE INDEX idx_bid_decision_bid_id ON bid_decision(bid_id);
+CREATE INDEX idx_bid_feedback_bid_id ON bid_feedback(bid_id);
