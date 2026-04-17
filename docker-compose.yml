@@ -2,26 +2,35 @@ version: "3.9"
 
 services:
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret
-      POSTGRES_DB: mydb
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: DockerFile
     restart: always
     ports:
-      - "8080:8080"
-    env_file:
-      - .env
+      - "8083:8083"
+    environment:
+      SERVER_ADDRESS: 0.0.0.0:8083
+      POSTGRES_CONN: postgres://postgres:postgres@db:5432/postgres?sslmode=disable
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   db-data:
