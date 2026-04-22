@@ -4,7 +4,7 @@ import "os"
 
 const (
 	defaultServerAddress = "0.0.0.0:8081"
-	defaultPostgresConn  = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+	defaultPostgresConn  = "postgres://postgres:postgres@localhost:5433/postgres?sslmode=disable"
 )
 
 type Config struct {
